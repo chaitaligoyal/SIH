@@ -1,0 +1,10 @@
+fastapi
+uvicorn
+streamlit
+transformers
+spacy
+sentence-transformers
+hdbscan
+lime
+psycopg2-binary
+python-dotenv
