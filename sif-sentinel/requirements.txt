@@ -1,10 +1,25 @@
-fastapi
-uvicorn
-streamlit
-transformers
-spacy
-sentence-transformers
-hdbscan
-lime
-psycopg2-binary
-python-dotenv
+# Pinned. The original pinned nothing, listed transformers and psycopg2-binary
+# that were never imported, and omitted pandas, numpy, pillow, pytesseract and
+# python-multipart — the last of which FastAPI requires for any UploadFile
+# endpoint, so /ingest_photo and /ingest_voice failed at import.
+
+fastapi==0.115.6
+uvicorn[standard]==0.34.0
+python-multipart==0.0.20        # required by FastAPI for file uploads
+pydantic==2.10.4
+
+streamlit==1.41.1
+requests==2.32.3
+
+pandas==2.2.3
+numpy==1.26.4
+scikit-learn==1.6.0
+joblib==1.4.2
+
+sentence-transformers==3.3.1
+hdbscan==0.8.40                 # needs a C toolchain; see README if the build fails
+
+# Optional ingestion channels. Install only if you are demoing them.
+# pillow==11.0.0
+# pytesseract==0.3.13           # also needs the tesseract-ocr system package
+# faster-whisper==1.1.0         # local transcription, replaces the OpenAI API call
