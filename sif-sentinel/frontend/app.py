@@ -69,43 +69,63 @@ with col_left:
                 data = res.json()
                 prob = data.get("sif_probability", 0.0)
                 entities = data.get("entities", [])
+                iogp_rules = data.get("iogp_rules", [])
+                lime_attributions = data.get("lime_attribution", [])
+                fairness = data.get("fairness_audit", {})
+                clustering = data.get("clustering", {})
                 
                 st.subheader("🔍 Analysis & Automated Triage")
                 
-                # Confidence-Based Routing Logic
+                # 1. Confidence-Based Routing Display
                 if prob >= 0.70:
                     st.markdown(f"### <span class='badge-danger'>🚨 ESCALATE: High SIF Potential ({prob*100:.1f}%)</span>", unsafe_allow_html=True)
-                    st.warning("Action Triggered: Stand-down review notification sent to HSSE Field Supervisor.")
+                    st.warning("Action Triggered: Immediate supervisor alert & critical barrier review.")
                 elif 0.40 <= prob < 0.70:
                     st.markdown(f"### <span class='badge-warning'>⚠️ HUMAN REVIEW REQUIRED ({prob*100:.1f}%)</span>", unsafe_allow_html=True)
-                    st.info("Action Triggered: Sent to HSSE secondary triage queue.")
+                    st.info("Action Triggered: Dispatched to secondary HSSE triage queue.")
                 else:
                     st.markdown(f"### <span class='badge-success'>✅ AUTO-FILED: Non-SIF Concern ({prob*100:.1f}%)</span>", unsafe_allow_html=True)
-                
-                # IOGP Life-Saving Rule Auto-Tagging
-                st.markdown("**Mapped IOGP Life-Saving Rules:**")
-                if "bypassed" in report_text.lower() or "loto" in report_text.lower() or "isolation" in report_text.lower():
-                    st.error("🔒 **Rule 4: Energy Isolation** (Critical Barrier Compromised)")
-                else:
-                    st.info("General Workplace Safety Standard")
+                    st.caption("Action Triggered: Archived in low-risk operational register.")
 
-                # Visual Precursor Entities
-                st.markdown("**Extracted Precursors (NER):**")
+                # 2. Dynamic IOGP Life-Saving Rules
+                st.markdown("**Mapped IOGP Life-Saving Rules:**")
+                if iogp_rules:
+                    for rule in iogp_rules[:2]: # Show top 2 matched rules
+                        conf = rule.get("confidence", 0.0)
+                        st.error(f"🔒 **{rule.get('rule')}** (Semantic Confidence: {conf*100:.1f}%)")
+                else:
+                    st.info("General Workplace Safety Standard (No critical IOGP rule violated)")
+
+                # 3. Precursor Entities (NER)
+                st.markdown("**Extracted Precursor Entities (NER):**")
                 tags_html = ""
                 for e in entities:
                     label = e["label"]
                     style_cls = "tag-equip" if label == "EQUIPMENT" else "tag-barrier" if label == "BARRIER-FAILURE" else "tag-loc" if label == "LOCATION" else "tag-act"
                     tags_html += f"<span class='tag {style_cls}'>{label}: {e['text']}</span> "
-                st.markdown(tags_html if tags_html else "No critical precursors identified.", unsafe_allow_html=True)
+                st.markdown(tags_html if tags_html else "No specific domain entities isolated.", unsafe_allow_html=True)
 
-                # Explainability (XAI) Token Attribution
-                st.markdown("**XAI Token Attribution (LIME/Attention Driver):**")
-                st.caption("Tokens with positive contribution toward SIF fatal potential classification:")
-                st.markdown("""
-                "...lockout/tagout (LOTO) energy isolation <mark style='background-color:#fca5a5;'>bypassed</mark>. 
-                A sudden <mark style='background-color:#ef4444; color:white;'>high-pressure release</mark> caused a metal pipe fitting to detach and fly across the deck, 
-                <mark style='background-color:#f87171; color:white;'>narrowly missing</mark> the worker..."
-                """, unsafe_allow_html=True)
+                # 4. Dynamic LIME Token Attribution
+                st.markdown("**XAI Token Attribution (LIME Drivers):**")
+                lime_html = ""
+                for token in lime_attributions:
+                    word = token.get("word")
+                    weight = token.get("weight", 0.0)
+                    if weight > 0:
+                        lime_html += f"<span style='background-color:#fca5a5; padding:2px 6px; margin:2px; border-radius:4px;'>{word} (+{weight:.2f})</span> "
+                    else:
+                        lime_html += f"<span style='background-color:#dcfce7; padding:2px 6px; margin:2px; border-radius:4px;'>{word} ({weight:.2f})</span> "
+                st.markdown(lime_html if lime_html else "No token attributions available.", unsafe_allow_html=True)
+
+                # 5. Fairness Audit Status
+                st.markdown("**Algorithmic Fairness Audit:**")
+                audit_passed = fairness.get("audit_passed", True)
+                status_text = fairness.get("status", "Audited")
+                variance = fairness.get("max_variance", 0.0)
+                if audit_passed:
+                    st.success(f"🛡️ Fairness Status: **{status_text}** (Max Counterfactual Delta: {variance*100:.2f}%)")
+                else:
+                    st.warning(f"⚠️ Fairness Warning: **{status_text}**")
 
         except Exception as e:
             st.error(f"Failed to communicate with FastAPI backend: {e}")

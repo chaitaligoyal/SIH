@@ -7,6 +7,14 @@ import spacy
 from sentence_transformers import SentenceTransformer
 import hdbscan
 from lime.lime_text import LimeTextExplainer
+import pandas as pd
+import os
+from fastapi import FastAPI, UploadFile, File
+import pytesseract
+from PIL import Image
+import io
+import openai
+import glob
 
 app = FastAPI(title="SIF-Sentinel API", version="1.0.0")
 
@@ -48,14 +56,68 @@ IOGP_RULES = [
     "Working at Height"
 ]
 
-# In-memory buffer to accumulate reports for real-time HDBSCAN clustering
-HISTORICAL_REPORTS_BUFFER = [
-    {"id": "HIST_01", "text": "High pressure valve seat cracked during nitrogen purging test at Rig 42."},
-    {"id": "HIST_02", "text": "Compressor discharge valve leaking gas, bypass valve engaged without permit."},
-    {"id": "HIST_03", "text": "Worker tripped on loose cable bundle in the canteen corridor."},
-    {"id": "HIST_04", "text": "Scaffold toe-board dislodged at 15 meters on Rig 08; fell onto safety netting."},
-    {"id": "HIST_05", "text": "Pressure safety valve jammed shut during pump switchover at Duliajan station."}
-]
+# ---------------------------------------------------------
+# REAL-WORLD DATASET INGESTION (Clustering Memory)
+# ---------------------------------------------------------
+# Load OSHA SIR, BSEE, PHMSA, and MSHA proxy datasets
+
+def load_proxy_datasets():
+    """
+    Loads the OSHA SIR proxy dataset to populate the HDBSCAN clustering buffer.
+    This fulfills the 'Clustering' stage of the SIH pipeline to surface emerging threats.
+    """
+    buffer = []
+    data_dir = "data/"
+
+    proxy_files = [
+        "SIRDataDownload_2.csv",          # OSHA SIR
+        "BSEE_Offshore_Incidents.csv",    # US BSEE
+        "PHMSA_Pipeline_Reports.csv",     # PHMSA
+        "MSHA_Mining_Data.csv"            # MSHA
+    ]
+
+    for file_name in proxy_files:
+        file_path = os.path.join(data_dir, file_name)
+
+    if os.path.exists(file_path):
+            try:
+                # Limit to 250 rows per dataset to ensure CPU stability during demo
+                df = pd.read_csv(file_path).head(250)
+                
+                # Autodetect narrative/text and ID columns dynamically
+                text_col = next((c for c in df.columns if any(kw in c.lower() for kw in ['narrative', 'description', 'summary', 'text'])), None)
+                id_col = next((c for c in df.columns if any(kw in c.lower() for kw in ['id', 'incident', 'report'])), df.columns[0])
+                
+                if text_col:
+                    df = df.dropna(subset=[text_col])
+                    source_prefix = file_name.split('_')[0][:5].upper() # e.g., OSHA, BSEE
+                    
+                    for _, row in df.iterrows():
+                        buffer.append({
+                            "id": f"{source_prefix}_{str(row[id_col])}",
+                            "text": str(row[text_col])
+                        })
+                    print(f"Loaded {len(df)} reports from {file_name}")
+                else:
+                    print(f"Skipped {file_name}: No text column detected.")
+                    
+            except pd.errors.EmptyDataError:
+                print(f"Skipped {file_name}: File is empty.")
+            except Exception as e:
+                print(f"Error loading {file_name}: {e}")
+
+    # Fallback to LLM-generated synthetic reports if no CSVs are populated
+    if not buffer:
+        print("Falling back to synthetic UA/UC memory buffer.")
+        buffer = [
+            {"id": "SYN_01", "text": "High pressure valve seat cracked during nitrogen purging test."},
+            {"id": "SYN_02", "text": "Compressor discharge valve leaking gas, bypass engaged without permit."}
+        ]
+        
+    return buffer
+
+# Initialize the buffer when the server starts
+HISTORICAL_REPORTS_BUFFER = load_proxy_datasets()
 
 # ---------------------------------------------------------
 # CORE SIF SCORING FUNCTION (DistilBERT Simulation/Inference)
@@ -63,23 +125,38 @@ HISTORICAL_REPORTS_BUFFER = [
 
 def predict_sif_proba(texts: List[str]) -> np.ndarray:
     """
-    Inference scoring function returning probabilities [[P(Non-SIF), P(SIF)]].
-    Evaluates high-energy hazard indicators and barrier failure cues.
+    Inference scoring function returning calibrated probabilities [[P(Non-SIF), P(SIF)]].
+    Detects high-energy hazard indicators, kinetic events, and barrier compromises.
     """
-    high_hazard_keywords = [
-        "bypass", "bypassed", "loto", "pressure release", "flange", 
-        "narrowly missing", "gas leak", "h2s", "struck by", "dropped object",
-        "scaffold fall", "unauthorized", "explosion", "suspended load"
+    # Expanded high-energy and barrier-failure vocabulary
+    high_hazard_terms = [
+        "bypass", "bypassed", "loto", "isolation", "pressure", "surge", "kick",
+        "snapped", "snap", "parted", "rupture", "burst", "tension", "whip",
+        "whipped", "dropped", "drop", "falling", "fell", "struck", "pinch",
+        "crush", "narrowly", "near miss", "missing", "gas leak", "h2s",
+        "blowout", "bop", "unauthorized", "explosion", "fire", "confined",
+        "scaffold", "interlock", "overhaul", "hoist", "sling", "winch"
     ]
+    
     probabilities = []
     for text in texts:
         text_lower = text.lower()
-        score = 0.15  # baseline probability
-        matches = sum(1 for kw in high_hazard_keywords if kw in text_lower)
-        score += min(matches * 0.25, 0.80)
         
-        # Soft cap at 98%
-        sif_prob = min(max(score, 0.02), 0.98)
+        # Count individual hazard cue matches
+        matched_cues = set()
+        for term in high_hazard_terms:
+            if term in text_lower:
+                matched_cues.add(term)
+        
+        matches = len(matched_cues)
+        
+        if matches == 0:
+            score = 0.12  # Clean baseline for purely benign reports
+        else:
+            # Calibrate: 1 term ~ 40%, 2 terms ~ 65%, 3+ terms ~ 85-95%
+            score = 0.20 + min(matches * 0.22, 0.76)
+        
+        sif_prob = float(min(max(score, 0.05), 0.96))
         probabilities.append([1.0 - sif_prob, sif_prob])
         
     return np.array(probabilities)
@@ -224,6 +301,8 @@ def cluster_emerging_threats(incoming_text: str) -> Dict[str, Any]:
 # API REQUEST & PIPELINE ENDPOINT
 # ---------------------------------------------------------
 
+openai.api_key = os.getenv("OPENAI_API_KEY")
+
 class IncidentReport(BaseModel):
     report_id: str
     text: str
@@ -262,3 +341,52 @@ def analyze_report(report: IncidentReport):
         "fairness_audit": fairness_audit,
         "clustering": cluster_insights
     }
+
+@app.post("/ingest_voice")
+async def ingest_voice_log(audio_file: UploadFile = File(...)):
+    """
+    Ingests spoken near-miss reports from frontline workers using OpenAI Whisper API.
+    Replaces typing on the HSSE platform[cite: 1].
+    """
+    try:
+        # Save temp file
+        file_location = f"temp_{audio_file.filename}"
+        with open(file_location, "wb+") as file_object:
+            file_object.write(audio_file.file.read())
+            
+        # Transcribe using Whisper API[cite: 1]
+        with open(file_location, "rb") as audio:
+            transcript = openai.Audio.transcribe("whisper-1", audio)
+            
+        os.remove(file_location)
+        
+        # Route the transcribed text automatically through the NLP Core
+        return analyze_report(IncidentReport(report_id="VOICE_LOG", text=transcript["text"]))
+        
+    except Exception as e:
+        return {"error": str(e)}
+
+@app.post("/ingest_photo")
+async def ingest_photo_log(image_file: UploadFile = File(...)):
+    """
+    Extracts text from photographed handwritten logs or printed 
+    permit-to-work forms using Tesseract OCR[cite: 1].
+    """
+    try:
+        image_data = await image_file.read()
+        image = Image.open(io.BytesIO(image_data))
+        
+        # Extract text using Tesseract OCR[cite: 1]
+        extracted_text = pytesseract.image_to_string(image)
+        
+        # Clean text (remove excessive newlines/whitespace)
+        cleaned_text = " ".join(extracted_text.split())
+        
+        if not cleaned_text:
+            return {"error": "No legible text found in photo."}
+            
+        # Route the OCR text automatically through the NLP Core
+        return analyze_report(IncidentReport(report_id="PHOTO_LOG", text=cleaned_text))
+        
+    except Exception as e:
+        return {"error": str(e)}

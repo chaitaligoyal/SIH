@@ -1,0 +1,6 @@
+incident_id,description
+BSEE-001,"During wireline operations on the offshore platform, the riser tensioner line snapped due to corrosion, dropping heavy equipment near the wellbay."
+BSEE-002,"Mud pump pressure spiked unexpectedly during cementing operations, causing a blown seal and a minor blowout preventer (BOP) fluid leak."
+BSEE-003,Worker slipped on the drill floor during tripping operations; safety harness prevented a fall into the moonpool.
+BSEE-004,"Crane operator lost visibility during a heavy lift of drill collars in high winds, causing the load to swing and strike the derrick framework."
+BSEE-005,Gas detector failed to alarm during a minor H2S release near the shale shakers. Manual override was required to trigger the platform stand-down.
