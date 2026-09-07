@@ -12,3 +12,8 @@ backend/feedback.csv
 .DS_Store
 .ipynb_checkpoints/
 .streamlit/secrets.toml
+
+# Regenerable data — do not commit
+data/MSHA_Accidents_real.csv
+data/labelled.csv
+data/*.zip
