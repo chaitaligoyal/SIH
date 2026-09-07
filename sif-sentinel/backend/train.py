@@ -168,7 +168,7 @@ def main() -> None:
 
     print("\nThreshold sweep — pick the threshold, then quote its numbers:")
     print(f"{'thresh':>7} {'precision':>10} {'recall':>8} {'F1':>7} {'flagged':>8}")
-    for t in [0.20, 0.30, 0.40, 0.50, 0.60, 0.70, 0.80]:
+    for t in [0.05, 0.08, 0.10, 0.12, 0.15, 0.20, 0.30, 0.40, 0.50, 0.60, 0.70, 0.80]:
         pred = (probs >= t).astype(int)
         if pred.sum() == 0:
             print(f"{t:>7.2f} {'—':>10} {'—':>8} {'—':>7} {0:>8}")

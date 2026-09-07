@@ -352,8 +352,8 @@ def triage_action(prob: float) -> str:
     low. Re-fit these on a validation set once labelled data exists — see
     train.py, which reports precision/recall at each candidate threshold.
     """
-    if prob >= 0.70:
+    if prob >= 0.30:
         return "ESCALATE_IMMEDIATE_SUPERVISOR"
-    if prob >= 0.40:
+    if prob >= 0.08:
         return "HUMAN_REVIEW_SECONDARY_QUEUE"
     return "AUTO_FILE_LOW_RISK"
