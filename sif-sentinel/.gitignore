@@ -1,1 +1,19 @@
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+env/
+
+backend/models/*.joblib
+backend/feedback.csv
+
 .env
+.DS_Store
+.ipynb_checkpoints/
+.streamlit/secrets.toml
+
+# Regenerable data — do not commit
+data/MSHA_Accidents_real.csv
+data/labelled.csv
+data/*.zip
