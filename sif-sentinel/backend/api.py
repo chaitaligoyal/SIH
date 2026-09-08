@@ -119,7 +119,7 @@ def analyze_batch(request: BatchRequest) -> Dict[str, Any]:
     results = [analyse(r, with_clustering=False) for r in request.reports]
     SCORED_REPORTS.extend(results)
 
-    flagged = [r for r in results if r["sif_probability"] >= 0.40]
+    flagged = [r for r in results if r["sif_probability"] >= scoring.T_REVIEW]
     return {
         "total": len(results),
         "sif_flagged": len(flagged),
@@ -157,7 +157,7 @@ def aggregate(min_reports: int = 1) -> Dict[str, Any]:
         for key, group in buckets.items():
             if len(group) < min_reports:
                 continue
-            flagged = [g for g in group if g["sif_probability"] >= 0.40]
+            flagged = [g for g in group if g["sif_probability"] >= scoring.T_REVIEW]
             rows.append({
                 "name": key,
                 "total_reports": len(group),
@@ -182,7 +182,7 @@ def aggregate(min_reports: int = 1) -> Dict[str, Any]:
 
     return {
         "total_reports": len(SCORED_REPORTS),
-        "sif_flagged": sum(1 for r in SCORED_REPORTS if r["sif_probability"] >= 0.40),
+        "sif_flagged": sum(1 for r in SCORED_REPORTS if r["sif_probability"] >= scoring.T_REVIEW),
         "sites": _rank(lambda r: [r.get("site") or "Unknown"]),
         "activities": _rank(lambda r: r["precursors"].get("activities") or ["Unspecified"]),
         "energy_sources": _rank(
@@ -231,7 +231,7 @@ def submit_feedback(fb: Feedback) -> Dict[str, Any]:
 
     disagreements = sum(
         1 for f in FEEDBACK_QUEUE
-        if (f["predicted_probability"] >= 0.40) != bool(f["corrected_label"])
+        if (f["predicted_probability"] >= scoring.T_REVIEW) != bool(f["corrected_label"])
     )
     return {
         "status": "recorded",

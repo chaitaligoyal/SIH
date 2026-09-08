@@ -1,0 +1,17 @@
+# Streamlit base theme. The full visual system lives in frontend/theme.py;
+# this only sets the values Streamlit renders before our CSS loads, so the
+# app never flashes default colours on first paint.
+
+[theme]
+base = "light"
+primaryColor = "#B4232A"
+backgroundColor = "#EDEFF2"
+secondaryBackgroundColor = "#FFFFFF"
+textColor = "#10151B"
+font = "sans serif"
+
+[server]
+runOnSave = true
+
+[browser]
+gatherUsageStats = false

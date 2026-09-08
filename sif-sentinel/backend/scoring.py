@@ -36,6 +36,14 @@ import numpy as np
 
 MODEL_PATH = os.path.join(os.path.dirname(__file__), "models", "sif_clf.joblib")
 
+# Operating points, read off the held-out threshold sweep in train.py.
+# Named here so the API, the triage bands and the dashboard gauge cannot
+# drift apart -- previously the API flagged at a hardcoded 0.40 while
+# triage_action() banded at 0.08, so the counts on screen disagreed with
+# the decisions beside them.
+T_REVIEW = 0.08      # recall 0.949, precision 0.517
+T_ESCALATE = 0.30    # recall 0.839, precision 0.734
+
 # ---------------------------------------------------------------------------
 # High-energy sources.
 # The SIF literature defines "high energy" as roughly >1500 ft-lbs, or any
@@ -352,8 +360,8 @@ def triage_action(prob: float) -> str:
     low. Re-fit these on a validation set once labelled data exists — see
     train.py, which reports precision/recall at each candidate threshold.
     """
-    if prob >= 0.30:
+    if prob >= T_ESCALATE:
         return "ESCALATE_IMMEDIATE_SUPERVISOR"
-    if prob >= 0.08:
+    if prob >= T_REVIEW:
         return "HUMAN_REVIEW_SECONDARY_QUEUE"
     return "AUTO_FILE_LOW_RISK"
