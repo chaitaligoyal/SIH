@@ -156,16 +156,15 @@ with tab_one:
     left, right = st.columns([5, 6], gap="large")
 
     with left:
-        T.panel_open("Incident narrative", "free text, any length")
-        choice = st.selectbox("Load an example", list(PRESETS.keys()),
-                              label_visibility="collapsed")
-        text = st.text_area(
-            "Narrative", PRESETS[choice], height=210,
-            placeholder="Paste a UA/UC observation, near-miss or incident report...",
-            label_visibility="collapsed",
-        )
-        go = st.button("Analyse", type="primary")
-        T.panel_close()
+        with T.panel("Incident narrative", "free text, any length"):
+            choice = st.selectbox("Load an example", list(PRESETS.keys()),
+                                  label_visibility="collapsed")
+            text = st.text_area(
+                "Narrative", PRESETS[choice], height=210,
+                placeholder="Paste a UA/UC observation, near-miss or incident report...",
+                label_visibility="collapsed",
+            )
+            go = st.button("Analyse", type="primary")
 
         st.caption(
             "Try the last two examples together. The harness case shows a control that "
@@ -197,86 +196,81 @@ with tab_one:
             prob = data["sif_probability"]
             T.verdict(data["triage_action"], prob)
             st.write("")
-            T.panel_open(
+            with T.panel(
                 "Fatal potential",
                 f"{prob:.0%} &middot; {data['scoring_method'].replace('-', ' ')}",
-            )
-            T.gauge(prob)
-            T.panel_close()
+            ):
+                T.gauge(prob)
 
     if data:
         st.write("")
-        T.panel_open(
+        with T.panel(
             "Why this reading",
             "a precursor needs high energy, a failed control, and someone exposed",
-        )
-        T.barrier_chain(data["assessment"])
-        st.write("")
-        T.chips(data["assessment"])
-        T.panel_close()
+        ):
+            T.barrier_chain(data["assessment"])
+            st.write("")
+            T.chips(data["assessment"])
 
         c1, c2 = st.columns([1, 1], gap="large")
 
         with c1:
-            T.panel_open("IOGP Life-Saving Rules", "up to three")
-            T.rule_rows(data.get("iogp_rules", []))
-            T.panel_close()
+            with T.panel("IOGP Life-Saving Rules", "up to three"):
+                T.rule_rows(data.get("iogp_rules", []))
 
         with c2:
             p = data.get("precursors", {})
-            T.panel_open("Extracted context", data.get("site", "site not stated"))
-            any_found = False
-            for label, key in (
-                ("Activity", "activities"),
-                ("Equipment", "equipment"),
-                ("Location", "locations"),
-                ("Controls named", "barriers_referenced"),
-            ):
-                if p.get(key):
-                    any_found = True
+            with T.panel("Extracted context", data.get("site", "site not stated")):
+                any_found = False
+                for label, key in (
+                    ("Activity", "activities"),
+                    ("Equipment", "equipment"),
+                    ("Location", "locations"),
+                    ("Controls named", "barriers_referenced"),
+                ):
+                    if p.get(key):
+                        any_found = True
+                        st.markdown(
+                            f"<div style='padding:7px 0;border-bottom:1px solid #D4D9DF;"
+                            f"font-size:13px'><span style='color:#79838F;font-size:11px;"
+                            f"font-weight:600;letter-spacing:.04em'>{label}</span><br>"
+                            f"{', '.join(p[key])}</div>",
+                            unsafe_allow_html=True,
+                        )
+                if not any_found:
                     st.markdown(
-                        f"<div style='padding:7px 0;border-bottom:1px solid #D4D9DF;"
-                        f"font-size:13px'><span style='color:#79838F;font-size:11px;"
-                        f"font-weight:600;letter-spacing:.04em'>{label}</span><br>"
-                        f"{', '.join(p[key])}</div>",
+                        "<p style='font-size:12.5px;color:#79838F;margin:0'>"
+                        "No activity, equipment or location vocabulary recognised. "
+                        "Extraction uses domain word lists, so unfamiliar phrasing "
+                        "returns nothing.</p>",
                         unsafe_allow_html=True,
                     )
-            if not any_found:
-                st.markdown(
-                    "<p style='font-size:12.5px;color:#79838F;margin:0'>"
-                    "No activity, equipment or location vocabulary recognised. "
-                    "Extraction uses domain word lists, so unfamiliar phrasing "
-                    "returns nothing.</p>",
-                    unsafe_allow_html=True,
-                )
 
-            cl = data.get("clustering", {})
-            if cl.get("cluster_summary"):
-                st.markdown(
-                    f"<div style='padding-top:10px;font-size:12.5px;color:#4A5563'>"
-                    f"{cl['cluster_summary']}</div>",
-                    unsafe_allow_html=True,
-                )
-            T.panel_close()
+                cl = data.get("clustering", {})
+                if cl.get("cluster_summary"):
+                    st.markdown(
+                        f"<div style='padding-top:10px;font-size:12.5px;color:#4A5563'>"
+                        f"{cl['cluster_summary']}</div>",
+                        unsafe_allow_html=True,
+                    )
 
-        T.panel_open("Reviewer correction", "feeds the next training round")
-        fb1, fb2, fb3 = st.columns([1, 1, 3])
-        payload = {
-            "report_id": data["report_id"],
-            "text": st.session_state.get("last_text", ""),
-            "predicted_probability": prob,
-        }
-        if fb1.button("Reading is correct"):
-            api_post("/feedback", {**payload, "corrected_label": 1 if prob >= 0.08 else 0})
-            st.success("Recorded. This becomes a confirmed training example.")
-        if fb2.button("Reading is wrong"):
-            api_post("/feedback", {**payload, "corrected_label": 0 if prob >= 0.08 else 1})
-            st.success("Recorded with the label flipped. It goes into the retraining set.")
-        fb3.caption(
-            "Corrections are appended to backend/feedback.csv and can be "
-            "concatenated straight into the training file."
-        )
-        T.panel_close()
+        with T.panel("Reviewer correction", "feeds the next training round"):
+            fb1, fb2, fb3 = st.columns([1, 1, 3])
+            payload = {
+                "report_id": data["report_id"],
+                "text": st.session_state.get("last_text", ""),
+                "predicted_probability": prob,
+            }
+            if fb1.button("Reading is correct"):
+                api_post("/feedback", {**payload, "corrected_label": 1 if prob >= 0.08 else 0})
+                st.success("Recorded. This becomes a confirmed training example.")
+            if fb2.button("Reading is wrong"):
+                api_post("/feedback", {**payload, "corrected_label": 0 if prob >= 0.08 else 1})
+                st.success("Recorded with the label flipped. It goes into the retraining set.")
+            fb3.caption(
+                "Corrections are appended to backend/feedback.csv and can be "
+                "concatenated straight into the training file."
+            )
 
 
 # --------------------------------------------------------------------------
@@ -359,9 +353,8 @@ with tab_batch:
                     )
 
             with b2:
-                T.panel_open("Score distribution", "every report in the batch")
-                T.distribution([r["sif_probability"] for r in res["results"]])
-                T.panel_close()
+                with T.panel("Score distribution", "every report in the batch"):
+                    T.distribution([r["sif_probability"] for r in res["results"]])
 
             st.write("")
             rows = [{
@@ -375,20 +368,19 @@ with tab_batch:
             } for r in res["results"]]
             out = pd.DataFrame(rows).sort_values("Score", ascending=False)
 
-            T.panel_open("Ranked queue", "highest fatal potential first")
-            st.dataframe(
-                out, use_container_width=True, height=430, hide_index=True,
-                column_config={
-                    "Score": st.column_config.ProgressColumn(
-                        "Score", format="%.2f", min_value=0.0, max_value=1.0, width="small"),
-                    "Why": st.column_config.TextColumn("Why", width="large"),
-                },
-            )
-            buf = io.StringIO()
-            out.to_csv(buf, index=False)
-            st.download_button("Download scored queue", buf.getvalue(),
-                               "sif_scored.csv", "text/csv")
-            T.panel_close()
+            with T.panel("Ranked queue", "highest fatal potential first"):
+                st.dataframe(
+                    out, use_container_width=True, height=430, hide_index=True,
+                    column_config={
+                        "Score": st.column_config.ProgressColumn(
+                            "Score", format="%.2f", min_value=0.0, max_value=1.0, width="small"),
+                        "Why": st.column_config.TextColumn("Why", width="large"),
+                    },
+                )
+                buf = io.StringIO()
+                out.to_csv(buf, index=False)
+                st.download_button("Download scored queue", buf.getvalue(),
+                                   "sif_scored.csv", "text/csv")
 
 
 # --------------------------------------------------------------------------
@@ -414,36 +406,31 @@ with tab_density:
 
         d1, d2 = st.columns(2, gap="large")
         with d1:
-            T.panel_open("Sites", "by precursor density")
-            T.rank_bars(agg["sites"])
-            T.panel_close()
-            T.panel_open("Energy sources", "what is releasing")
-            T.rank_bars(agg["energy_sources"], unit="mentions")
-            T.panel_close()
+            with T.panel("Sites", "by precursor density"):
+                T.rank_bars(agg["sites"])
+            with T.panel("Energy sources", "what is releasing"):
+                T.rank_bars(agg["energy_sources"], unit="mentions")
         with d2:
-            T.panel_open("Activities", "what people were doing")
-            T.rank_bars(agg["activities"])
-            T.panel_close()
-            T.panel_open("IOGP rules", "which rule is under strain")
-            T.rank_bars(agg["iogp_rules"], unit="reports")
-            T.panel_close()
+            with T.panel("Activities", "what people were doing"):
+                T.rank_bars(agg["activities"])
+            with T.panel("IOGP rules", "which rule is under strain"):
+                T.rank_bars(agg["iogp_rules"], unit="reports")
 
         if agg.get("barriers"):
-            T.panel_open("Controls failing most often", "across every scored report")
-            bar_rows = agg["barriers"][:10]
-            top = max(b["occurrences"] for b in bar_rows) or 1
-            html = ""
-            for b in bar_rows:
-                w = b["occurrences"] / top * 100
-                html += (
-                    f"<div class='rank'><div>"
-                    f"<div class='nm'>{b['barrier_failure']}</div>"
-                    f"<div class='track'><div class='fill' style='width:{w:.1f}%;"
-                    f"background:{T.WARNING}'></div></div></div>"
-                    f"<div class='pct' style='color:{T.WARNING}'>{b['occurrences']}</div></div>"
-                )
-            st.markdown(html, unsafe_allow_html=True)
-            T.panel_close()
+            with T.panel("Controls failing most often", "across every scored report"):
+                bar_rows = agg["barriers"][:10]
+                top = max(b["occurrences"] for b in bar_rows) or 1
+                html = ""
+                for b in bar_rows:
+                    w = b["occurrences"] / top * 100
+                    html += (
+                        f"<div class='rank'><div>"
+                        f"<div class='nm'>{b['barrier_failure']}</div>"
+                        f"<div class='track'><div class='fill' style='width:{w:.1f}%;"
+                        f"background:{T.WARNING}'></div></div></div>"
+                        f"<div class='pct' style='color:{T.WARNING}'>{b['occurrences']}</div></div>"
+                    )
+                st.markdown(html, unsafe_allow_html=True)
 
 
 # --------------------------------------------------------------------------
@@ -471,13 +458,12 @@ with tab_patterns:
         st.write("")
 
         for c in cl["clusters"]:
-            T.panel_open(
+            with T.panel(
                 f"Pattern {c['cluster_id']}",
                 f"{c['size']} reports &middot; {', '.join(c['sources'])}",
-            )
-            st.markdown(
-                f"<p style='font-size:13px;line-height:1.55;color:#4A5563;margin:0;"
-                f"max-width:90ch'>{c['representative']}</p>",
-                unsafe_allow_html=True,
-            )
-            T.panel_close()
+            ):
+                st.markdown(
+                    f"<p style='font-size:13px;line-height:1.55;color:#4A5563;margin:0;"
+                    f"max-width:90ch'>{c['representative']}</p>",
+                    unsafe_allow_html=True,
+                )

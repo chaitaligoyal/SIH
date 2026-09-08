@@ -24,6 +24,7 @@ Visual direction: control-room instrumentation, not a SaaS dashboard.
 
 from __future__ import annotations
 
+from contextlib import contextmanager
 from typing import List, Optional
 
 import streamlit as st
@@ -58,7 +59,7 @@ T_ESCALATE = 0.30
 
 def inject_css() -> None:
     """Load fonts and the full stylesheet. Call once, first thing."""
-    st.markdown(
+    _render(
         f"""
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -72,7 +73,7 @@ def inject_css() -> None:
   --danger: {DANGER}; --warning: {WARNING}; --safe: {SAFE}; --mandate: {MANDATE};
 }}
 
-/* ---- base ---------------------------------------------------------- */
+/* base */
 html, body, [class*="css"], .stApp {{
   font-family: 'Archivo', system-ui, -apple-system, sans-serif;
   color: var(--ink);
@@ -90,7 +91,7 @@ html, body, [class*="css"], .stApp {{
   * {{ animation: none !important; transition: none !important; }}
 }}
 
-/* ---- masthead ------------------------------------------------------ */
+/* masthead */
 .masthead {{
   display: flex; align-items: baseline; gap: 14px;
   padding: 22px 0 12px; border-bottom: 2px solid var(--ink);
@@ -104,7 +105,7 @@ html, body, [class*="css"], .stApp {{
   border-left: 1px solid var(--rule-strong); padding-left: 14px;
 }}
 
-/* ---- status strip -------------------------------------------------- */
+/* status strip */
 .statusbar {{
   display: flex; flex-wrap: wrap; gap: 0;
   border: 1px solid var(--rule); border-top: none;
@@ -128,9 +129,11 @@ html, body, [class*="css"], .stApp {{
 .stat.live .v {{ color: var(--safe); }}
 .stat.degraded .v {{ color: var(--warning); }}
 
-/* ---- panels -------------------------------------------------------- */
-.panel {{ background: var(--panel); border: 1px solid var(--rule); padding: 18px 20px 20px; }}
-.panel + .panel {{ margin-top: 14px; }}
+/* panels */
+[data-testid="stVerticalBlockBorderWrapper"] {{
+  background: var(--panel); border: 1px solid var(--rule);
+  border-radius: 0; padding: 4px 18px 12px;
+}}
 .panel-title {{
   font-size: 12.5px; font-weight: 700; letter-spacing: .01em;
   padding-bottom: 8px; margin-bottom: 14px;
@@ -139,7 +142,7 @@ html, body, [class*="css"], .stApp {{
 }}
 .panel-title .aux {{ font-weight: 400; font-size: 11.5px; color: var(--ink3); }}
 
-/* ---- verdict ------------------------------------------------------- */
+/* verdict */
 .verdict {{ display: flex; align-items: stretch; border: 1px solid var(--rule); background: var(--panel); }}
 .verdict .band {{ width: 9px; flex: none; }}
 .verdict .body {{ padding: 16px 20px 18px; flex: 1; }}
@@ -151,7 +154,7 @@ html, body, [class*="css"], .stApp {{
 .v-warning .word {{ color: var(--warning); }}
 .v-safe .word {{ color: var(--safe); }}
 
-/* ---- evidence chips ------------------------------------------------ */
+/* evidence chips */
 .chiprow {{ display: flex; flex-wrap: wrap; gap: 6px; }}
 .chip {{
   display: inline-flex; align-items: center; gap: 7px;
@@ -171,7 +174,7 @@ html, body, [class*="css"], .stApp {{
 .c-held     {{ border-left: 3px solid var(--safe); }}
 .c-held .dot {{ background: var(--safe); }}
 
-/* ---- rule rows ----------------------------------------------------- */
+/* rule rows */
 .rulerow {{ padding: 10px 0; border-bottom: 1px solid var(--rule); }}
 .rulerow:last-child {{ border-bottom: none; }}
 .rulerow .top {{ display: flex; justify-content: space-between; align-items: baseline; gap: 10px; }}
@@ -184,7 +187,7 @@ html, body, [class*="css"], .stApp {{
 .rulerow .bar span {{ display: block; height: 100%; background: var(--mandate); }}
 .rulerow .terms {{ font-size: 11.5px; color: var(--ink3); }}
 
-/* ---- ranked bars --------------------------------------------------- */
+/* ranked bars */
 .rank {{ display: grid; grid-template-columns: 1fr 62px; gap: 12px;
          align-items: center; padding: 9px 0; border-bottom: 1px solid var(--rule); }}
 .rank:last-child {{ border-bottom: none; }}
@@ -197,7 +200,7 @@ html, body, [class*="css"], .stApp {{
   text-align: right; font-variant-numeric: tabular-nums;
 }}
 
-/* ---- empty / hint states ------------------------------------------- */
+/* empty / hint states */
 .empty {{
   border: 1px dashed var(--rule-strong); background: var(--panel);
   padding: 30px 26px; text-align: left;
@@ -212,7 +215,7 @@ html, body, [class*="css"], .stApp {{
 }}
 .note.warn {{ border-left-color: var(--warning); }}
 
-/* ---- streamlit widget overrides ------------------------------------ */
+/* streamlit widget overrides */
 .stTabs [data-baseweb="tab-list"] {{ gap: 0; border-bottom: 1px solid var(--rule); }}
 .stTabs [data-baseweb="tab"] {{
   height: 40px; padding: 0 18px; background: transparent;
@@ -243,13 +246,32 @@ html, body, [class*="css"], .stApp {{
 div[data-testid="stDataFrame"] {{ border: 1px solid var(--rule); }}
 hr {{ border-color: var(--rule); margin: 20px 0; }}
 </style>
-""",
-        unsafe_allow_html=True,
+"""
     )
 
 
+def _render(html: str) -> None:
+    """
+    Emit raw HTML into the page.
+
+    Blank lines are stripped first. CommonMark terminates a raw-HTML block at
+    the first blank line, so anything after one is parsed as markdown and shown
+    to the user as literal text -- which is exactly what happened to the whole
+    stylesheet before this. st.html skips the markdown parser altogether and is
+    preferred where available (Streamlit 1.33+); st.markdown is the fallback.
+    """
+    compact = "\n".join(ln for ln in html.split("\n") if ln.strip())
+    renderer = getattr(st, "html", None)
+    if renderer is not None:
+        renderer(compact)
+    else:
+        st.markdown(compact, unsafe_allow_html=True)
+
+
 def _h(html: str) -> None:
-    st.markdown(html, unsafe_allow_html=True)
+    """Markdown-path render, for fragments that sit inside a container."""
+    compact = "\n".join(ln for ln in html.split("\n") if ln.strip())
+    st.markdown(compact, unsafe_allow_html=True)
 
 
 # --------------------------------------------------------------------------
@@ -273,13 +295,22 @@ def statusbar(items: List[dict]) -> None:
     _h(f"<div class='statusbar'>{cells}</div>")
 
 
-def panel_open(title: str, aux: str = "") -> None:
-    aux_html = f"<span class='aux'>{aux}</span>" if aux else ""
-    _h(f"<div class='panel'><div class='panel-title'>{title}{aux_html}</div>")
+@contextmanager
+def panel(title: str, aux: str = ""):
+    """
+    A titled panel that can contain Streamlit widgets.
 
-
-def panel_close() -> None:
-    _h("</div>")
+    Built on st.container(border=True) rather than a raw <div>. Streamlit wraps
+    every st.markdown call in its own container, so an opening <div> emitted by
+    one call cannot enclose widgets rendered by later calls -- the tag is closed
+    for you before the widget exists. The container is the only construct that
+    actually nests.
+    """
+    box = st.container(border=True)
+    with box:
+        aux_html = f"<span class='aux'>{aux}</span>" if aux else ""
+        _h(f"<div class='panel-title'>{title}{aux_html}</div>")
+        yield box
 
 
 def empty_state(heading: str, body: str) -> None:
